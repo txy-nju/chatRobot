@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Git
+.git/
+.gitignore
+
+# Claude
+.claude/
+
+# OpenSpec
+openspec/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env (use .env.example instead)
+.env
+
+# Data (mounted as volume)
+data/

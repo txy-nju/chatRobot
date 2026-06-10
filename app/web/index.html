@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatRobot Admin</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header id="header">
+        <div class="header-left">
+            <h1>🤖 ChatRobot</h1>
+            <span class="status-badge" id="statusBadge">● 运行中</span>
+        </div>
+    </header>
+
+    <div id="app">
+        <nav id="sidebar">
+            <a href="#" data-page="skills" class="nav-item active">
+                <span class="nav-icon">📋</span> Skill 管理
+            </a>
+            <a href="#" data-page="llm" class="nav-item">
+                <span class="nav-icon">⚙️</span> LLM 配置
+            </a>
+            <a href="#" data-page="bot" class="nav-item">
+                <span class="nav-icon">🎛️</span> 行为配置
+            </a>
+            <a href="#" data-page="platform" class="nav-item">
+                <span class="nav-icon">🔌</span> 平台接入
+            </a>
+            <a href="#" data-page="test" class="nav-item">
+                <span class="nav-icon">🧪</span> 对话测试
+            </a>
+        </nav>
+
+        <main id="content">
+            <!-- Pages are rendered here by JS -->
+        </main>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
