@@ -59,7 +59,22 @@ async def oauth_login(request: Request):
 
 @router.get("/oauth/callback")
 async def oauth_callback(code: str = "", state: str = "", error: str = ""):
-    """Handle OAuth callback from Feishu. Exchange code for tokens."""
+    """Handle OAuth callback from Feishu. Exchange code for tokens.
+
+    API response format (OIDC endpoint):
+    {
+        "code": 0,                    // error code at TOP level
+        "msg": "success",
+        "data": {
+            "access_token": "eyJ...", // JWT-format token
+            "refresh_token": "ur-...",
+            "expires_in": 1781234567, // absolute Unix timestamp, NOT seconds!
+            "token_type": "Bearer",
+            "scope": "..."
+        }
+    }
+    Note: open_id is NOT in this response; obtain separately via /authen/v1/user_info.
+    """
     if error:
         logger.error(f"OAuth error: {error}")
         return HTMLResponse(
@@ -71,7 +86,7 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
             "<h2>授权失败</h2><p>未收到授权码。</p><p><a href='/api/oauth/login'>重新授权</a></p>"
         )
 
-    # Get app access token first
+    # Step 1: Get app access token
     app_token = await _get_app_access_token()
     if not app_token:
         return HTMLResponse(
@@ -80,6 +95,7 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
         )
 
     try:
+        # Step 2: Exchange authorization code for user tokens
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 FEISHU_TOKEN_URL,
@@ -92,30 +108,58 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
                     "Content-Type": "application/json",
                 },
             )
-            data = resp.json()
+            body = resp.json()
 
-        if data.get("code") != 0:
-            logger.error(f"Token exchange failed: {data}")
+        # Error check at TOP level (code is outside data)
+        code_val = body.get("code", -1)
+        if code_val != 0:
+            logger.error(f"Token exchange failed: code={code_val}, msg={body.get('msg')}")
             return HTMLResponse(
-                f"<h2>授权失败</h2><p>换取 token 失败: {data.get('msg', '未知错误')}</p>"
+                f"<h2>授权失败</h2><p>换取 token 失败 ({body.get('msg', '未知错误')})</p>"
                 f"<p><a href='/api/oauth/login'>重新授权</a></p>"
             )
 
-        access_token = data.get("access_token", "")
-        refresh_token = data.get("refresh_token", "")
-        expires_in = data.get("expires_in", 7200)
-        open_id = data.get("open_id", "")
+        # Tokens are nested inside data
+        inner = body.get("data", {})
+        access_token = inner.get("access_token", "")
+        refresh_token = inner.get("refresh_token", "")
 
+        # expires_in from this endpoint is an absolute Unix timestamp (seconds)
+        # NOT a relative duration. Use it directly as expires_at.
+        expires_at = inner.get("expires_in", 0)
+
+        if not access_token:
+            logger.error(f"Token exchange returned empty access_token: {list(inner.keys())}")
+            return HTMLResponse(
+                f"<h2>授权失败</h2><p>接口返回了空的 access_token</p>"
+                f"<p><a href='/api/oauth/login'>重试</a></p>"
+            )
+
+        # Step 3: Get user info for open_id
+        open_id = ""
+        try:
+            user_resp = await client.get(
+                "https://open.feishu.cn/open-apis/authen/v1/user_info",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            user_data = user_resp.json()
+            if user_data.get("code") == 0:
+                open_id = user_data.get("data", {}).get("open_id", "")
+        except Exception as e:
+            logger.warning(f"Failed to get user_info: {e}")
+
+        # Step 4: Store tokens
         await TokenManager.save(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_in=expires_in,
+            expires_at=expires_at,
             open_id=open_id,
         )
 
         return HTMLResponse(
             "<h2>✅ 授权成功！</h2>"
             f"<p>已成功授权，机器人将自动回复你的私信。</p>"
+            f"<p>Open ID: {open_id}</p>"
             f"<p><a href='/'>返回管理后台</a></p>"
         )
 

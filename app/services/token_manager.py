@@ -10,9 +10,8 @@ class TokenManager:
     """Manage user OAuth tokens: store, load, refresh, check validity."""
 
     @staticmethod
-    async def save(access_token: str, refresh_token: str, expires_in: int, open_id: str = ""):
-        """Save tokens to the database. expires_in is in seconds."""
-        expires_at = time.time() + expires_in
+    async def save(access_token: str, refresh_token: str, expires_at: float, open_id: str = ""):
+        """Save tokens to the database. expires_at is an absolute Unix timestamp."""
         db = await get_db()
         try:
             await db.execute(
