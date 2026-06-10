@@ -110,6 +110,11 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
             )
             body = resp.json()
 
+        # Debug: log response structure
+        logger.info(f"OAuth token response - code: {body.get('code')}, keys: {list(body.keys())}")
+        if "data" in body:
+            logger.info(f"OAuth data keys: {list(body['data'].keys())}")
+
         # Error check at TOP level (code is outside data)
         code_val = body.get("code", -1)
         if code_val != 0:
@@ -128,23 +133,26 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
         # NOT a relative duration. Use it directly as expires_at.
         expires_at = inner.get("expires_in", 0)
 
+        logger.info(f"OAuth token: access={access_token[:20]}..., refresh={refresh_token[:20]}..., expires={expires_at}")
+
         if not access_token:
-            logger.error(f"Token exchange returned empty access_token: {list(inner.keys())}")
+            logger.error(f"Token exchange returned empty access_token. inner keys: {list(inner.keys())}")
             return HTMLResponse(
                 f"<h2>授权失败</h2><p>接口返回了空的 access_token</p>"
                 f"<p><a href='/api/oauth/login'>重试</a></p>"
             )
 
-        # Step 3: Get user info for open_id
+        # Step 3: Get user info for open_id (use fresh client)
         open_id = ""
         try:
-            user_resp = await client.get(
-                "https://open.feishu.cn/open-apis/authen/v1/user_info",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            user_data = user_resp.json()
-            if user_data.get("code") == 0:
-                open_id = user_data.get("data", {}).get("open_id", "")
+            async with httpx.AsyncClient() as user_client:
+                user_resp = await user_client.get(
+                    "https://open.feishu.cn/open-apis/authen/v1/user_info",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                user_data = user_resp.json()
+                if user_data.get("code") == 0:
+                    open_id = user_data.get("data", {}).get("open_id", "")
         except Exception as e:
             logger.warning(f"Failed to get user_info: {e}")
 
