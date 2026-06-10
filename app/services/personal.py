@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
 
 import httpx
 
@@ -46,7 +45,7 @@ class PersonalAssistant:
             return
         self._running = True
         self._task = asyncio.create_task(self._poll_loop())
-        print("=== PersonalAssistant started", flush=True)
+        logger.info("PersonalAssistant started")
 
     async def stop(self):
         self._running = False
@@ -57,6 +56,7 @@ class PersonalAssistant:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        logger.info("PersonalAssistant stopped")
 
     async def _poll_loop(self):
         """Main polling loop: every 10 seconds, check for new messages."""
@@ -66,7 +66,7 @@ class PersonalAssistant:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"=== POLL error: {e}", flush=True)
+                logger.error(f"Poll error: {e}")
 
             await asyncio.sleep(10)
 
@@ -98,39 +98,19 @@ class PersonalAssistant:
                 )
                 chats_data = resp.json()
             except Exception as e:
-                print(f"=== POLL: fetch chats error: {e}", flush=True)
+                logger.error(f"Failed to fetch chats: {e}")
                 return
 
             if chats_data.get("code") != 0:
-                print(f"=== POLL: chat list error code={chats_data.get('code')} msg={chats_data.get('msg')}", flush=True)
+                logger.warning(f"Chat list API error: {chats_data.get('msg')}")
                 return
 
-            chats = []
-            page_token = ""
-            page_count = 0
-            while True:
-                page_data = chats_data if page_count == 0 else resp.json()
-                items = page_data.get("data", {}).get("items", [])
-                chats.extend(items)
-                page_count += 1
-                has_more = page_data.get("data", {}).get("has_more", False)
-                page_token = page_data.get("data", {}).get("page_token", "")
-                if not has_more or not page_token:
-                    break
-                resp = await client.get(
-                    f"{FEISHU_BASE}/im/v1/chats",
-                    headers=headers,
-                    params={"page_size": 50, "page_token": page_token, "sort_type": "ByActiveTimeDesc"},
-                )
-            print(f"=== POLL: total {len(chats)} chats across {page_count} pages", flush=True)
-            for c in chats:
-                print(f"=== POLL: CHAT id={c.get('chat_id','')[:30]} name={c.get('name','')[:30]} type={c.get('chat_type','')}", flush=True)
+            chats = chats_data.get("data", {}).get("items", [])
             self._chat_count = len(chats)
 
             # 2. For each chat, check recent messages
             for chat in chats:
                 chat_id = chat.get("chat_id", "")
-                chat_name = chat.get("name", chat_id[:20])
                 if not chat_id:
                     continue
 
@@ -147,11 +127,10 @@ class PersonalAssistant:
                     )
                     msg_data = msg_resp.json()
                 except Exception as e:
-                    print(f"=== POLL: fetch msgs error for {chat_name}: {e}", flush=True)
+                    logger.error(f"Failed to fetch messages for {chat_id}: {e}")
                     continue
 
                 if msg_data.get("code") != 0:
-                    print(f"=== POLL: msg fetch failed for {chat_name}: {msg_data.get('msg')}", flush=True)
                     continue
 
                 messages = msg_data.get("data", {}).get("items", [])
@@ -162,8 +141,6 @@ class PersonalAssistant:
                     sender = msg.get("sender", {})
                     sender_id = sender.get("id", "")
                     sender_type = sender.get("sender_type", "")
-
-                    print(f"=== POLL: msg {msg_id[:16]} type={msg_type} sender={sender_id[:16] if sender_id else 'none'} chat={chat_name}", flush=True)
 
                     # Skip already processed
                     if msg_id in self._processed_ids:
@@ -192,9 +169,8 @@ class PersonalAssistant:
                         self._processed_ids.add(msg_id)
                         continue
 
-                    print(f"=== POLL: PROCESSING '{text[:60]}' from {sender_id[:20]}", flush=True)
+                    logger.info(f"Personal mode: processing '{text[:60]}' from {sender_id}")
 
-                    # Process through bot engine
                     incoming = IncomingMessage(
                         platform="feishu",
                         channel_id=chat_id,
@@ -207,15 +183,11 @@ class PersonalAssistant:
                     try:
                         reply = await engine.process_message(incoming)
                         if reply and reply.content:
-                            print(f"=== POLL: REPLY '{reply.content[:60]}...'", flush=True)
                             await self._send_as_user(client, user_token, reply)
                             self._reply_count_today += 1
-                        else:
-                            print(f"=== POLL: process_message returned None", flush=True)
                     except Exception as e:
-                        print(f"=== POLL: process error: {e}", flush=True)
+                        logger.error(f"Error processing personal message: {e}")
 
-                    # Mark processed
                     self._add_processed(msg_id)
 
         # Trim processed set
@@ -243,12 +215,12 @@ class PersonalAssistant:
                 },
             )
             data = resp.json()
-            if data.get("code") == 0:
-                print(f"=== POLL: reply sent to {reply.channel_id[:20]}", flush=True)
+            if data.get("code") != 0:
+                logger.error(f"Reply send failed: {data.get('msg')}")
             else:
-                print(f"=== POLL: reply send failed: {data.get('msg')}", flush=True)
+                logger.info(f"Personal reply sent to {reply.channel_id}")
         except Exception as e:
-            print(f"=== POLL: reply send error: {e}", flush=True)
+            logger.error(f"Reply send error: {e}")
 
 
 # Global instance
