@@ -113,6 +113,7 @@ class PersonalAssistant:
 
             chats = chats_data.get("data", {}).get("items", [])
             self._chat_count = len(chats)
+            print(f"=== POLL: found {len(chats)} chats", flush=True)
 
             # 2. For each chat, check recent messages
             for chat in chats:
@@ -148,6 +149,17 @@ class PersonalAssistant:
                     sender = msg.get("sender", {})
                     sender_id = sender.get("id", "")
                     sender_type = sender.get("sender_type", "")
+
+                    # Diagnostic
+                    skip_reason = ""
+                    if msg_id in self._processed_ids:
+                        skip_reason = "already_processed"
+                    elif sender_type == "user" and sender_id == open_id:
+                        skip_reason = f"self_sent(sender={sender_id})"
+                    elif msg_type != "text":
+                        skip_reason = f"non_text({msg_type})"
+                    if skip_reason:
+                        print(f"=== POLL: SKIP msg {msg_id[:8]}... reason={skip_reason}", flush=True)
 
                     # Skip already processed
                     if msg_id in self._processed_ids:
