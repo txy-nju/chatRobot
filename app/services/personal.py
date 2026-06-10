@@ -94,7 +94,7 @@ class PersonalAssistant:
                 resp = await client.get(
                     f"{FEISHU_BASE}/im/v1/chats",
                     headers=headers,
-                    params={"page_size": 50},
+                    params={"page_size": 50, "sort_type": "ByActiveTimeDesc"},
                 )
                 chats_data = resp.json()
             except Exception as e:
