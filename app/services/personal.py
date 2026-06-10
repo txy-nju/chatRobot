@@ -74,8 +74,10 @@ class PersonalAssistant:
             await asyncio.sleep(10)
 
     async def _poll_once(self):
+        print(f"=== POLL: tick, chats will be checked", flush=True)
         # Check authorization
         if not await TokenManager.is_authorized():
+            print(f"=== POLL: not authorized, skipping", flush=True)
             return
 
         token_data = await TokenManager.load()
@@ -175,6 +177,8 @@ class PersonalAssistant:
                         self._processed_ids.add(msg_id)
                         continue
 
+                    print(f"=== PERSONAL MODE: processing message from {sender_id} in {chat_id}: {text[:50]}...", flush=True)
+
                     # Process through bot engine
                     incoming = IncomingMessage(
                         platform="feishu",
@@ -188,9 +192,13 @@ class PersonalAssistant:
                     try:
                         reply = await engine.process_message(incoming)
                         if reply and reply.content:
+                            print(f"=== PERSONAL MODE: reply generated ({len(reply.content)} chars), sending...", flush=True)
                             await self._send_as_user(client, user_token, reply)
                             self._reply_count_today += 1
+                        else:
+                            print(f"=== PERSONAL MODE: process_message returned None or empty", flush=True)
                     except Exception as e:
+                        print(f"=== PERSONAL MODE: error={e}", flush=True)
                         logger.error(f"Error processing personal message: {e}")
 
                     # Mark as processed
