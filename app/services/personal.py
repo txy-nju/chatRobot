@@ -138,9 +138,12 @@ class PersonalAssistant:
                     continue
 
                 if msg_data.get("code") != 0:
+                    print(f"=== POLL: msg fetch failed for {chat_id[:12]}... code={msg_data.get('code')} msg={msg_data.get('msg')}", flush=True)
                     continue
 
                 messages = msg_data.get("data", {}).get("items", [])
+                if messages:
+                    print(f"=== POLL: chat {chat_id[:12]}... has {len(messages)} recent msgs", flush=True)
 
                 for msg in messages:
                     msg_id = msg.get("message_id", "")
