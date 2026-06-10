@@ -50,7 +50,7 @@ async def oauth_login(request: Request):
     params = {
         "app_id": settings.FEISHU_APP_ID,
         "redirect_uri": redirect_uri,
-        "scope": "im:message im:message.p2p_msg:get_as_user im:chat:readonly",
+        "scope": "im:message im:message.p2p_msg:get_as_user im:message.group_msg:get_as_user im:chat:readonly",
         "state": "feishu_oauth",
     }
     auth_url = f"{FEISHU_AUTH_URL}?{urllib.parse.urlencode(params)}"
