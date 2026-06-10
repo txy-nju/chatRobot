@@ -11,7 +11,13 @@ class TokenManager:
 
     @staticmethod
     async def save(access_token: str, refresh_token: str, expires_at: float, open_id: str = ""):
-        """Save tokens to the database. expires_at is an absolute Unix timestamp."""
+        """Save tokens to the database.
+
+        expires_at: if < 100000, treated as relative seconds from now.
+                     if >= 100000, treated as an absolute Unix timestamp.
+        """
+        if expires_at < 100000:
+            expires_at = time.time() + expires_at
         db = await get_db()
         try:
             await db.execute(
