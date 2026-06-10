@@ -89,14 +89,19 @@ class BotEngine:
 
         return reply
 
-    async def send_reply(self, reply: OutgoingMessage) -> bool:
-        """Send a reply through the appropriate platform adapter."""
+    async def send_reply(self, reply: OutgoingMessage, user_token: str = "") -> bool:
+        """Send a reply through the appropriate platform adapter.
+
+        Args:
+            reply: The OutgoingMessage to send.
+            user_token: Optional user_access_token for sending as a user.
+        """
         platform = self._platforms.get(reply.platform)
         if platform is None:
             logger.error(f"No platform adapter for: {reply.platform}")
             return False
 
-        return await platform.send_message(reply)
+        return await platform.send_message(reply, user_token=user_token)
 
     def get_platform(self, name: str):
         """Get a platform adapter by name."""

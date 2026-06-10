@@ -59,9 +59,19 @@ async def init_db():
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS user_token (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                access_token TEXT NOT NULL DEFAULT '',
+                refresh_token TEXT NOT NULL DEFAULT '',
+                expires_at REAL NOT NULL DEFAULT 0.0,
+                open_id TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             -- Insert default config rows if they don't exist
             INSERT OR IGNORE INTO llm_config (id) VALUES (1);
             INSERT OR IGNORE INTO bot_config (id) VALUES (1);
+            INSERT OR IGNORE INTO user_token (id) VALUES (1);
         """)
         await db.commit()
     finally:

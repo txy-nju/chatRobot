@@ -46,6 +46,7 @@ async function renderPage(page) {
         case 'bot': content.innerHTML = renderBotPage(); setupBotPage(); break;
         case 'platform': content.innerHTML = renderPlatformPage(); setupPlatformPage(); break;
         case 'test': content.innerHTML = renderTestPage(); setupTestPage(); break;
+        case 'personal': content.innerHTML = await renderPersonalPage(); setupPersonalPage(); break;
     }
 }
 
@@ -690,6 +691,97 @@ async function clearTestChat() {
             输入消息测试当前 Skill 和 LLM 配置的效果
         </div>`;
     try { await api('/admin/conversation/test-channel', { method: 'DELETE' }); } catch (e) { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PERSONAL ASSISTANT PAGE
+// ═══════════════════════════════════════════════════════════════
+async function renderPersonalPage() {
+    let status;
+    try {
+        status = await api('/admin/personal/status');
+    } catch (e) {
+        status = { auth: { authorized: false }, polling: { running: false } };
+    }
+
+    const auth = status.auth || {};
+    const polling = status.polling || {};
+
+    const authStatusHtml = auth.authorized
+        ? `<div class="conn-status connected" style="font-size:14px;">✅ 已授权</div>
+           <div style="margin-top:12px;font-size:13px;color:var(--text-secondary);">
+             <div>授权用户: ${escapeHtml(auth.open_id || '-')}</div>
+             <div>Token 到期: ${auth.expires_at ? new Date(auth.expires_at * 1000).toLocaleString() : '-'}</div>
+           </div>
+           <a href="/api/oauth/login" class="btn btn-secondary btn-sm" style="margin-top:12px;display:inline-block;text-decoration:none;">🔄 重新授权</a>`
+        : `<div class="conn-status disconnected" style="font-size:14px;">未授权</div>
+           <p style="font-size:13px;color:var(--text-secondary);margin-top:8px;">
+             授权后机器人将自动回复你的飞书私信。
+           </p>
+           <a href="/api/oauth/login" class="btn btn-primary btn-sm" style="margin-top:12px;display:inline-block;text-decoration:none;">🔑 前往授权</a>`;
+
+    const pollStatusHtml = polling.running
+        ? `<div style="display:flex;align-items:center;gap:8px;">
+             <span style="color:var(--success);font-size:18px;">●</span> 运行中
+           </div>`
+        : `<div style="display:flex;align-items:center;gap:8px;">
+             <span style="color:var(--text-secondary);font-size:18px;">●</span> 已停止
+           </div>`;
+
+    return `
+    <div class="card">
+        <div class="card-title">授权状态</div>
+        ${authStatusHtml}
+    </div>
+
+    <div class="card">
+        <div class="card-title">轮询状态</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;">
+            <div>
+                <div style="font-size:12px;color:var(--text-secondary);">状态</div>
+                ${pollStatusHtml}
+            </div>
+            <div>
+                <div style="font-size:12px;color:var(--text-secondary);">上次轮询</div>
+                <div style="font-size:14px;font-weight:600;">
+                    ${polling.last_poll_time
+                        ? new Date(polling.last_poll_time * 1000).toLocaleTimeString()
+                        : '-'}
+                </div>
+            </div>
+            <div>
+                <div style="font-size:12px;color:var(--text-secondary);">监控会话</div>
+                <div style="font-size:14px;font-weight:600;">${polling.chat_count ?? '-'} 个</div>
+            </div>
+            <div>
+                <div style="font-size:12px;color:var(--text-secondary);">今日回复</div>
+                <div style="font-size:14px;font-weight:600;">${polling.reply_count_today ?? 0} 条</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">使用说明</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">
+            <p>1. 点击「前往授权」，在飞书中同意授权</p>
+            <p>2. 授权成功后，机器人每 10 秒检查一次你的新私信</p>
+            <p>3. 发现新消息后自动以你的身份回复</p>
+            <p>4. 回复内容由当前活跃的 Skill 和 LLM 配置决定</p>
+            <p>5. Token 过期后点击「重新授权」即可</p>
+        </div>
+    </div>`;
+}
+
+function setupPersonalPage() {
+    // Auto-refresh status every 10 seconds
+    const interval = setInterval(async () => {
+        if (state.currentPage !== 'personal') {
+            clearInterval(interval);
+            return;
+        }
+        const content = document.getElementById('content');
+        content.innerHTML = await renderPersonalPage();
+    }, 10000);
 }
 
 // ── Init ──

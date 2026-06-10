@@ -322,3 +322,32 @@ async def clear_conversation(channel_id: str):
     """Clear conversation history for a channel."""
     memory.clear(channel_id)
     return {"ok": True}
+
+
+# ── Personal Assistant Status ──
+
+@router.get("/personal/status")
+async def get_personal_status():
+    """Get the personal assistant status: auth, polling, stats."""
+    from app.services.token_manager import TokenManager
+    from app.services.personal import assistant
+
+    token = await TokenManager.load()
+    is_auth = await TokenManager.is_authorized()
+
+    auth_info = {
+        "authorized": is_auth,
+        "open_id": "",
+        "expires_at": 0,
+    }
+    if token:
+        auth_info["open_id"] = token.get("open_id", "")
+        auth_info["expires_at"] = token.get("expires_at", 0)
+
+    poll_status = assistant.status
+
+    return {
+        "auth": auth_info,
+        "polling": poll_status,
+    }
+

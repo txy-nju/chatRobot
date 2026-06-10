@@ -38,6 +38,9 @@ class Settings:
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
 
+    # OAuth
+    FEISHU_REDIRECT_URI: str = os.getenv("FEISHU_REDIRECT_URI", "")
+
     # Database
     DATABASE_PATH: str = os.getenv("DATABASE_PATH", "data/chatrobot.db")
 
