@@ -105,7 +105,26 @@ class PersonalAssistant:
                 print(f"=== POLL: chat list error code={chats_data.get('code')} msg={chats_data.get('msg')}", flush=True)
                 return
 
-            chats = chats_data.get("data", {}).get("items", [])
+            chats = []
+            page_token = ""
+            page_count = 0
+            while True:
+                page_data = chats_data if page_count == 0 else resp.json()
+                items = page_data.get("data", {}).get("items", [])
+                chats.extend(items)
+                page_count += 1
+                has_more = page_data.get("data", {}).get("has_more", False)
+                page_token = page_data.get("data", {}).get("page_token", "")
+                if not has_more or not page_token:
+                    break
+                resp = await client.get(
+                    f"{FEISHU_BASE}/im/v1/chats",
+                    headers=headers,
+                    params={"page_size": 50, "page_token": page_token, "sort_type": "ByActiveTimeDesc"},
+                )
+            print(f"=== POLL: total {len(chats)} chats across {page_count} pages", flush=True)
+            for c in chats:
+                print(f"=== POLL: CHAT id={c.get('chat_id','')[:30]} name={c.get('name','')[:30]} type={c.get('chat_type','')}", flush=True)
             self._chat_count = len(chats)
 
             # 2. For each chat, check recent messages
