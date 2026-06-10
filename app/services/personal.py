@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime
@@ -9,8 +10,6 @@ from app.config import settings
 from app.models.message import IncomingMessage
 from app.services.bot_engine import engine
 from app.services.token_manager import TokenManager
-from app.services.skill_manager import SkillManager
-from app.services.conversation import memory
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ class PersonalAssistant:
         self._max_processed = 1000
         self._chat_count = 0
         self._reply_count_today = 0
-        self._today_date = datetime.now().date()
 
     @property
     def is_running(self) -> bool:
@@ -48,7 +46,7 @@ class PersonalAssistant:
             return
         self._running = True
         self._task = asyncio.create_task(self._poll_loop())
-        logger.info("PersonalAssistant started")
+        print("=== PersonalAssistant started", flush=True)
 
     async def stop(self):
         self._running = False
@@ -59,7 +57,6 @@ class PersonalAssistant:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        logger.info("PersonalAssistant stopped")
 
     async def _poll_loop(self):
         """Main polling loop: every 10 seconds, check for new messages."""
@@ -69,15 +66,12 @@ class PersonalAssistant:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Poll error: {e}")
+                print(f"=== POLL error: {e}", flush=True)
 
             await asyncio.sleep(10)
 
     async def _poll_once(self):
-        print(f"=== POLL: tick, chats will be checked", flush=True)
-        # Check authorization
         if not await TokenManager.is_authorized():
-            print(f"=== POLL: not authorized, skipping", flush=True)
             return
 
         token_data = await TokenManager.load()
@@ -104,20 +98,20 @@ class PersonalAssistant:
                 )
                 chats_data = resp.json()
             except Exception as e:
-                logger.error(f"Failed to fetch chats: {e}")
+                print(f"=== POLL: fetch chats error: {e}", flush=True)
                 return
 
             if chats_data.get("code") != 0:
-                logger.warning(f"Chat list API error: {chats_data.get('msg')}")
+                print(f"=== POLL: chat list error code={chats_data.get('code')} msg={chats_data.get('msg')}", flush=True)
                 return
 
             chats = chats_data.get("data", {}).get("items", [])
             self._chat_count = len(chats)
-            print(f"=== POLL: found {len(chats)} chats", flush=True)
 
             # 2. For each chat, check recent messages
             for chat in chats:
                 chat_id = chat.get("chat_id", "")
+                chat_name = chat.get("name", chat_id[:20])
                 if not chat_id:
                     continue
 
@@ -129,59 +123,46 @@ class PersonalAssistant:
                             "container_id_type": "chat",
                             "container_id": chat_id,
                             "sort_type": "ByCreateTimeDesc",
-                            "page_size": 3,
+                            "page_size": 5,
                         },
                     )
                     msg_data = msg_resp.json()
                 except Exception as e:
-                    logger.error(f"Failed to fetch messages for {chat_id}: {e}")
+                    print(f"=== POLL: fetch msgs error for {chat_name}: {e}", flush=True)
                     continue
 
                 if msg_data.get("code") != 0:
-                    print(f"=== POLL: msg fetch failed for {chat_id[:12]}... code={msg_data.get('code')} msg={msg_data.get('msg')}", flush=True)
+                    print(f"=== POLL: msg fetch failed for {chat_name}: {msg_data.get('msg')}", flush=True)
                     continue
 
                 messages = msg_data.get("data", {}).get("items", [])
-                if messages:
-                    print(f"=== POLL: chat {chat_id[:12]}... has {len(messages)} recent msgs", flush=True)
 
                 for msg in messages:
                     msg_id = msg.get("message_id", "")
                     msg_type = msg.get("msg_type", "")
-                    create_time_str = msg.get("create_time", "")
                     sender = msg.get("sender", {})
                     sender_id = sender.get("id", "")
                     sender_type = sender.get("sender_type", "")
 
-                    # Diagnostic
-                    skip_reason = ""
-                    if msg_id in self._processed_ids:
-                        skip_reason = "already_processed"
-                    elif sender_type == "user" and sender_id == open_id:
-                        skip_reason = f"self_sent(sender={sender_id})"
-                    elif msg_type != "text":
-                        skip_reason = f"non_text({msg_type})"
-                    if skip_reason:
-                        print(f"=== POLL: SKIP msg {msg_id[:8]}... reason={skip_reason}", flush=True)
+                    print(f"=== POLL: msg {msg_id[:16]} type={msg_type} sender={sender_id[:16] if sender_id else 'none'} chat={chat_name}", flush=True)
 
                     # Skip already processed
                     if msg_id in self._processed_ids:
                         continue
 
-                    # Skip self-sent messages
+                    # Skip self-sent
                     if sender_type == "user" and sender_id == open_id:
                         self._processed_ids.add(msg_id)
                         continue
 
-                    # Skip non-text messages
+                    # Skip non-text
                     if msg_type != "text":
                         self._processed_ids.add(msg_id)
                         continue
 
-                    # Extract text content
+                    # Extract text
                     body = msg.get("body", {})
                     content_str = body.get("content", "{}")
-                    import json
                     try:
                         content = json.loads(content_str)
                         text = content.get("text", "")
@@ -192,7 +173,7 @@ class PersonalAssistant:
                         self._processed_ids.add(msg_id)
                         continue
 
-                    print(f"=== PERSONAL MODE: processing message from {sender_id} in {chat_id}: {text[:50]}...", flush=True)
+                    print(f"=== POLL: PROCESSING '{text[:60]}' from {sender_id[:20]}", flush=True)
 
                     # Process through bot engine
                     incoming = IncomingMessage(
@@ -207,16 +188,15 @@ class PersonalAssistant:
                     try:
                         reply = await engine.process_message(incoming)
                         if reply and reply.content:
-                            print(f"=== PERSONAL MODE: reply generated ({len(reply.content)} chars), sending...", flush=True)
+                            print(f"=== POLL: REPLY '{reply.content[:60]}...'", flush=True)
                             await self._send_as_user(client, user_token, reply)
                             self._reply_count_today += 1
                         else:
-                            print(f"=== PERSONAL MODE: process_message returned None or empty", flush=True)
+                            print(f"=== POLL: process_message returned None", flush=True)
                     except Exception as e:
-                        print(f"=== PERSONAL MODE: error={e}", flush=True)
-                        logger.error(f"Error processing personal message: {e}")
+                        print(f"=== POLL: process error: {e}", flush=True)
 
-                    # Mark as processed
+                    # Mark processed
                     self._add_processed(msg_id)
 
         # Trim processed set
@@ -228,7 +208,6 @@ class PersonalAssistant:
 
     async def _send_as_user(self, client: httpx.AsyncClient, user_token: str, reply):
         """Send a message as the authorized user."""
-        import json
         content = json.dumps({"text": reply.content})
         try:
             resp = await client.post(
@@ -245,12 +224,12 @@ class PersonalAssistant:
                 },
             )
             data = resp.json()
-            if data.get("code") != 0:
-                logger.error(f"Failed to send personal reply: {data.get('msg')}")
+            if data.get("code") == 0:
+                print(f"=== POLL: reply sent to {reply.channel_id[:20]}", flush=True)
             else:
-                logger.info(f"Personal reply sent to {reply.channel_id}")
+                print(f"=== POLL: reply send failed: {data.get('msg')}", flush=True)
         except Exception as e:
-            logger.error(f"Send error: {e}")
+            print(f"=== POLL: reply send error: {e}", flush=True)
 
 
 # Global instance
