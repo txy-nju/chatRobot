@@ -1,0 +1,21 @@
+# IDE
+.idea/
+
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
