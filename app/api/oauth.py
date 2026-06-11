@@ -13,26 +13,7 @@ logger = logging.getLogger(__name__)
 
 FEISHU_AUTH_URL = "https://open.feishu.cn/open-apis/authen/v1/authorize"
 FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
-FEISHU_APP_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal"
-
-
-async def _get_app_access_token() -> str:
-    """Get app_access_token using App ID and App Secret."""
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                FEISHU_APP_TOKEN_URL,
-                json={
-                    "app_id": settings.FEISHU_APP_ID,
-                    "app_secret": settings.FEISHU_APP_SECRET,
-                },
-                headers={"Content-Type": "application/json"},
-            )
-            data = resp.json()
-            return data.get("app_access_token", "")
-    except Exception as e:
-        logger.error(f"Failed to get app_access_token: {e}")
-        return ""
+FEISHU_USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info"
 
 
 def _redirect_uri(request: Request) -> str:
@@ -50,7 +31,7 @@ async def oauth_login(request: Request):
     params = {
         "app_id": settings.FEISHU_APP_ID,
         "redirect_uri": redirect_uri,
-        "scope": "im:message im:message.p2p_msg:get_as_user im:message.group_msg:get_as_user im:chat:readonly",
+        "scope": "im:message im:message.send_as_user im:message.p2p_msg:get_as_user im:message.group_msg:get_as_user im:chat:readonly",
         "state": "feishu_oauth",
     }
     auth_url = f"{FEISHU_AUTH_URL}?{urllib.parse.urlencode(params)}"
@@ -87,7 +68,7 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
         )
 
     # Step 1: Get app access token
-    app_token = await _get_app_access_token()
+    app_token = await TokenManager.get_app_access_token()
     if not app_token:
         return HTMLResponse(
             "<h2>授权失败</h2><p>无法获取应用凭证，请检查 App ID 和 App Secret 配置。</p>"
@@ -142,17 +123,21 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
                 f"<p><a href='/api/oauth/login'>重试</a></p>"
             )
 
-        # Step 3: Get user info for open_id (use fresh client)
+        # Step 3: Get user info for open_id and display name (use fresh client)
         open_id = ""
+        display_name = ""
         try:
             async with httpx.AsyncClient() as user_client:
                 user_resp = await user_client.get(
-                    "https://open.feishu.cn/open-apis/authen/v1/user_info",
+                    FEISHU_USER_INFO_URL,
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
                 user_data = user_resp.json()
                 if user_data.get("code") == 0:
-                    open_id = user_data.get("data", {}).get("open_id", "")
+                    inner_data = user_data.get("data", {})
+                    open_id = inner_data.get("open_id", "")
+                    display_name = inner_data.get("name", "")
+                    logger.info(f"User info: open_id={open_id}, name={display_name}")
         except Exception as e:
             logger.warning(f"Failed to get user_info: {e}")
 
@@ -162,6 +147,7 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
             refresh_token=refresh_token,
             expires_at=expires_at,
             open_id=open_id,
+            display_name=display_name,
         )
 
         return HTMLResponse(

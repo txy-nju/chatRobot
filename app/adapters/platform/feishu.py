@@ -73,17 +73,8 @@ class FeishuAdapter(BasePlatform):
             raw=body,
         )
 
-    async def send_message(self, reply: OutgoingMessage, user_token: str = "") -> bool:
-        """Send a text message to Feishu chat.
-
-        Args:
-            reply: The message to send.
-            user_token: Optional user_access_token. If provided, sends as the user.
-                        Otherwise sends as the bot application.
-        """
-        if user_token:
-            return await self._send_as_user(reply, user_token)
-
+    async def send_message(self, reply: OutgoingMessage) -> bool:
+        """Send a text message to Feishu chat as the bot application."""
         client = self._get_client()
 
         content = json.dumps({"text": reply.content})
@@ -110,32 +101,3 @@ class FeishuAdapter(BasePlatform):
             logger.error(f"Feishu message send error: {e}")
             return False
 
-    async def _send_as_user(self, reply: OutgoingMessage, user_token: str) -> bool:
-        """Send a message using user_access_token (appears as the user)."""
-        import httpx
-        content = json.dumps({"text": reply.content})
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    "https://open.feishu.cn/open-apis/im/v1/messages",
-                    headers={
-                        "Authorization": f"Bearer {user_token}",
-                        "Content-Type": "application/json",
-                    },
-                    params={"receive_id_type": "chat_id"},
-                    json={
-                        "receive_id": reply.channel_id,
-                        "msg_type": "text",
-                        "content": content,
-                    },
-                )
-                data = resp.json()
-                if data.get("code") == 0:
-                    logger.info(f"Feishu message sent as user to {reply.channel_id}")
-                    return True
-                else:
-                    logger.error(f"Feishu send as user failed: {data.get('msg')}")
-                    return False
-        except Exception as e:
-            logger.error(f"Feishu send as user error: {e}")
-            return False
