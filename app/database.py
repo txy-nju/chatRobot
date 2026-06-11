@@ -65,6 +65,7 @@ async def init_db():
                 refresh_token TEXT NOT NULL DEFAULT '',
                 expires_at REAL NOT NULL DEFAULT 0.0,
                 open_id TEXT NOT NULL DEFAULT '',
+                display_name TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -74,5 +75,14 @@ async def init_db():
             INSERT OR IGNORE INTO user_token (id) VALUES (1);
         """)
         await db.commit()
+
+        # Migration: add display_name column for existing databases
+        try:
+            await db.execute(
+                "ALTER TABLE user_token ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"
+            )
+            await db.commit()
+        except Exception:
+            pass  # Column already exists
     finally:
         await db.close()

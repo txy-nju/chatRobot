@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -7,6 +9,13 @@ from app.api.admin import router as admin_router
 from app.api.oauth import router as oauth_router
 from app.database import init_db
 from app.services.personal import assistant
+
+# Configure application logging to stdout (visible in Docker logs)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 app = FastAPI(title="ChatRobot", version="1.0.0")
 
